@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
 import {
   Building2,
   School,
@@ -75,6 +76,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [time, setTime] = useState(new Date());
+  
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -98,7 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen w-full bg-slate-50 flex overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -206,20 +213,92 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           
           <div className="flex-1 sm:hidden" />
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-100">
-            <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-              <span className="text-sm font-medium text-white">{user?.email?.charAt(0)?.toUpperCase()}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.email}</p>
-              <p className="text-xs text-slate-500 truncate capitalize">Role: {user?.role || 'Admin'} | Perms: {user?.permissions?.length || 0}</p>
-            </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer text-left w-full"
+              title="Ubah Password"
+            >
+              <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                <span className="text-sm font-medium text-white">{user?.email?.charAt(0)?.toUpperCase()}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate text-slate-800">{user?.email}</p>
+                <p className="text-xs text-slate-500 truncate capitalize">Role: {user?.role || 'Admin'} | Perms: {user?.permissions?.length || 0}</p>
+              </div>
+            </button>
           </div>
         </header>
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
           {children}
         </main>
       </div>
+
+      {/* Ubah Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !passwordLoading && setShowPasswordModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+              <h3 className="font-bold text-slate-800">Ubah Password Anda</h3>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setPasswordError('');
+              setPasswordSuccess(false);
+              setPasswordLoading(true);
+              const { error } = await supabase.auth.updateUser({ password: newPassword });
+              setPasswordLoading(false);
+              if (error) {
+                setPasswordError(error.message);
+              } else {
+                setPasswordSuccess(true);
+                setNewPassword('');
+                setTimeout(() => setShowPasswordModal(false), 2000);
+              }
+            }} className="p-6 space-y-4">
+              {passwordSuccess && (
+                <div className="bg-emerald-50 text-emerald-600 p-3 rounded-lg text-sm border border-emerald-200">
+                  Password berhasil diubah!
+                </div>
+              )}
+              {passwordError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-200">
+                  {passwordError}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password Baru</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Minimal 6 karakter"
+                />
+              </div>
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  disabled={passwordLoading}
+                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium disabled:opacity-50"
+                >
+                  {passwordLoading ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

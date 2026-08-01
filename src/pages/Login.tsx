@@ -14,6 +14,10 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent, isRegister: boolean) => {
     e.preventDefault();
+    if (!email || !password) {
+      setError('Email dan Password harus diisi');
+      return;
+    }
     setError('');
     setLoading(true);
     const { error } = isRegister

@@ -41,7 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (profile) {
         set({ user: profile as User });
       } else {
-        set({ user: { id: data.user.id, email: data.user.email!, name: email.split('@')[0], role: 'admin', permissions: [] } });
+        set({ user: { id: data.user.id, email: data.user.email!, name: email.split('@')[0], role: 'user', permissions: [] } });
       }
       return { error: null };
     } catch (err: any) {
@@ -65,6 +65,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           
         if (profile) {
           set({ user: profile as User });
+        } else {
+          set({ user: { id: data.user.id, email: data.user.email!, name: email.split('@')[0], role: 'user', permissions: [] } });
         }
       }
       return { error: null };
@@ -90,7 +92,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             if (data) {
               set({ user: data as User, loading: false });
             } else {
-              set({ user: { id: session.user.id, email: session.user.email!, name: session.user.email!.split('@')[0], role: 'admin', permissions: [] }, loading: false });
+              set({ user: { id: session.user.id, email: session.user.email!, name: session.user.email!.split('@')[0], role: 'user', permissions: [] }, loading: false });
             }
           });
       } else {
