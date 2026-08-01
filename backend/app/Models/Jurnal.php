@@ -1,0 +1,31 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Jurnal extends Model
+{
+    use HasFactory;
+
+    protected $table = 'jurnal';
+
+    protected $fillable = [
+        'nomor_bukti',
+        'tanggal',
+        'keterangan',
+        'total',
+        'user_id',
+    ];
+
+    public function details()
+    {
+        return $this->hasMany(JurnalDetail::class, 'jurnal_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
