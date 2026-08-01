@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Sekolah as SekolahType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -7,7 +7,7 @@ import { Plus } from 'lucide-react';
 
 export default function Sekolah() {
   const [data, setData] = useState<SekolahType[]>([]);
-  const [yayasanList, setYayasanList] = useState<{ id: number; nama: string }[]>([]);
+  const [yayasanList, setYayasanList] = useState<{ id: string; nama: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SekolahType | null>(null);
@@ -23,12 +23,14 @@ export default function Sekolah() {
 
   const fetchData = async () => {
     setLoading(true);
+    
     const [sekolahRes, yayasanRes] = await Promise.all([
-      api.get('/sekolah'),
-      api.get('/yayasan'),
+      supabase.from('sekolah').select('*').order('created_at', { ascending: false }),
+      supabase.from('yayasan').select('id, nama').order('nama', { ascending: true })
     ]);
-    setData(sekolahRes.data);
-    setYayasanList(yayasanRes.data);
+    
+    setData(sekolahRes.data || []);
+    setYayasanList(yayasanRes.data || []);
     setLoading(false);
   };
 
@@ -38,14 +40,14 @@ export default function Sekolah() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ yayasan_id: String(yayasanList[0]?.id || ''), nama: '', alamat: '', telepon: '', email: '', jenjang: 'SD', kode_invoice: '' });
+    setForm({ yayasan_id: yayasanList[0]?.id || '', nama: '', alamat: '', telepon: '', email: '', jenjang: 'SD', kode_invoice: '' });
     setModalOpen(true);
   };
 
   const openEdit = (row: SekolahType) => {
     setEditing(row);
     setForm({
-      yayasan_id: String(row.yayasan_id),
+      yayasan_id: row.yayasan_id,
       nama: row.nama,
       alamat: row.alamat || '',
       telepon: row.telepon || '',
@@ -58,19 +60,29 @@ export default function Sekolah() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, yayasan_id: Number(form.yayasan_id) };
     if (editing) {
-      await api.put(`/sekolah/${editing.id}`, payload);
+      const { error } = await supabase
+        .from('sekolah')
+        .update(form)
+        .eq('id', editing.id);
+      if (error) console.error('Error updating sekolah:', error);
     } else {
-      await api.post('/sekolah', payload);
+      const { error } = await supabase
+        .from('sekolah')
+        .insert([form]);
+      if (error) console.error('Error inserting sekolah:', error);
     }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Hapus sekolah ini?')) {
-      await api.delete(`/sekolah/${id}`);
+      const { error } = await supabase
+        .from('sekolah')
+        .delete()
+        .eq('id', id);
+      if (error) console.error('Error deleting sekolah:', error);
       fetchData();
     }
   };

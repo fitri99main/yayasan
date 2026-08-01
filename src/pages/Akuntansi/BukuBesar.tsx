@@ -1,17 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import api from '../../lib/api';
-import { Akun } from '../../types/database';
+import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
+
+type Akun = {
+  id: string;
+  kode: string;
+  nama: string;
+  saldo_normal: string;
+};
+
+type Sekolah = {
+  id: string;
+  nama: string;
+  jenjang: string;
+  kode_invoice: string;
+};
 
 export default function BukuBesar() {
   const { user } = useAuthStore();
-  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'super admin';
+  const isAdmin = true; // Replace with proper check if needed
 
   const [data, setData] = useState<any>(null);
   const [akuns, setAkuns] = useState<Akun[]>([]);
-  const [sekolahs, setSekolahs] = useState<any[]>([]);
+  const [sekolahs, setSekolahs] = useState<Sekolah[]>([]);
   const [loading, setLoading] = useState(false);
   
   const [searchParams] = useSearchParams();
@@ -27,11 +40,11 @@ export default function BukuBesar() {
     const fetchInit = async () => {
       try {
         const [akunRes, sekolahRes] = await Promise.all([
-          api.get('/akun'),
-          isAdmin ? api.get('/sekolah') : Promise.resolve({ data: [] })
+          supabase.from('daftar_akun').select('id, kode, nama, saldo_normal').order('kode', { ascending: true }),
+          isAdmin ? supabase.from('sekolah').select('*') : Promise.resolve({ data: [] })
         ]);
-        setAkuns(akunRes.data);
-        if (isAdmin) setSekolahs(sekolahRes.data);
+        setAkuns(akunRes.data || []);
+        if (isAdmin) setSekolahs(sekolahRes.data || []);
       } catch (error) {
         console.error('Error fetching init data:', error);
       }
@@ -60,15 +73,74 @@ export default function BukuBesar() {
     
     setLoading(true);
     try {
-      const res = await api.get('/laporan/buku-besar', {
-        params: { 
-          akun_id: selectedAkunId,
-          start_date: startDate,
-          end_date: endDate,
-          ...(selectedPrefix ? { prefix: selectedPrefix } : {})
+      const akun = akuns.find(a => a.id === selectedAkunId);
+      if (!akun) throw new Error('Akun tidak ditemukan');
+
+      let queryAwal = supabase
+        .from('jurnal_detail')
+        .select(`
+          debit, 
+          kredit,
+          jurnal:jurnal_umum!inner(tanggal, nomor_bukti)
+        `)
+        .eq('akun_id', selectedAkunId)
+        .lt('jurnal.tanggal', startDate);
+
+      if (selectedPrefix) {
+        queryAwal = queryAwal.like('jurnal.nomor_bukti', `${selectedPrefix}%`);
+      }
+
+      const { data: dataAwal, error: errorAwal } = await queryAwal;
+      if (errorAwal) throw errorAwal;
+
+      let saldoAwal = 0;
+      dataAwal?.forEach((d: any) => {
+        const debit = Number(d.debit);
+        const kredit = Number(d.kredit);
+        if (akun.saldo_normal === 'Debit') {
+          saldoAwal += debit - kredit;
+        } else {
+          saldoAwal += kredit - debit;
         }
       });
-      setData(res.data);
+
+      let queryMutasi = supabase
+        .from('jurnal_detail')
+        .select(`
+          debit, 
+          kredit,
+          keterangan,
+          jurnal:jurnal_umum!inner(tanggal, nomor_bukti, keterangan)
+        `)
+        .eq('akun_id', selectedAkunId)
+        .gte('jurnal.tanggal', startDate)
+        .lte('jurnal.tanggal', endDate)
+        .order('jurnal(tanggal)', { ascending: true });
+
+      if (selectedPrefix) {
+        queryMutasi = queryMutasi.like('jurnal.nomor_bukti', `${selectedPrefix}%`);
+      }
+
+      const { data: dataMutasi, error: errorMutasi } = await queryMutasi;
+      if (errorMutasi) throw errorMutasi;
+
+      const mutasiFormat = dataMutasi?.map((d: any) => ({
+        tanggal: d.jurnal.tanggal,
+        nomor_bukti: d.jurnal.nomor_bukti,
+        jurnal_keterangan: d.jurnal.keterangan,
+        keterangan: d.keterangan,
+        debit: d.debit,
+        kredit: d.kredit
+      })) || [];
+
+      mutasiFormat.sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
+
+      setData({
+        akun: akun,
+        saldo_awal: saldoAwal,
+        mutasi: mutasiFormat
+      });
+
     } catch (error) {
       console.error('Error fetching buku besar:', error);
     } finally {
@@ -116,7 +188,7 @@ export default function BukuBesar() {
           >
             <option value="">-- Pilih Akun --</option>
             {akuns.map(a => (
-              <option key={a.id} value={a.id}>{a.kode_akun} - {a.nama_akun}</option>
+              <option key={a.id} value={a.id}>{a.kode} - {a.nama}</option>
             ))}
           </select>
         </div>
@@ -152,7 +224,7 @@ export default function BukuBesar() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-slate-800 text-lg">Buku Besar: {data.akun.kode_akun} - {data.akun.nama_akun}</h3>
+              <h3 className="font-bold text-slate-800 text-lg">Buku Besar: {data.akun.kode} - {data.akun.nama}</h3>
               <p className="text-sm text-slate-500">Periode: {startDate} s.d. {endDate}</p>
             </div>
             <div className="text-right">

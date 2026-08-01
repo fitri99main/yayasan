@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
 
 export default function Neraca() {
   const { user } = useAuthStore();
-  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'super admin';
+  const isAdmin = true;
   const navigate = useNavigate();
 
   const [data, setData] = useState<any>(null);
@@ -19,8 +19,8 @@ export default function Neraca() {
     const fetchInit = async () => {
       if (isAdmin) {
         try {
-          const res = await api.get('/sekolah');
-          setSekolahs(res.data);
+          const { data, error } = await supabase.from('sekolah').select('*');
+          if (!error && data) setSekolahs(data);
         } catch (error) {
           console.error('Error fetching sekolah:', error);
         }
@@ -36,13 +36,95 @@ export default function Neraca() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/laporan/neraca', {
-        params: { 
-          end_date: endDate,
-          ...(selectedPrefix ? { prefix: selectedPrefix } : {})
+      const { data: akunData, error: akunError } = await supabase
+        .from('daftar_akun')
+        .select('id, kode, nama, kategori, saldo_normal');
+        
+      if (akunError) throw akunError;
+
+      let query = supabase
+        .from('jurnal_detail')
+        .select(`
+          akun_id,
+          debit,
+          kredit,
+          jurnal:jurnal_umum!inner(tanggal, nomor_bukti)
+        `);
+
+      if (endDate) {
+        query = query.lte('jurnal.tanggal', endDate);
+      }
+      if (selectedPrefix) {
+        query = query.like('jurnal.nomor_bukti', `${selectedPrefix}%`);
+      }
+
+      const { data: mutasiData, error: mutasiError } = await query;
+      if (mutasiError) throw mutasiError;
+
+      const result = {
+        harta: [] as any[],
+        kewajiban: [] as any[],
+        modal: [] as any[],
+        total_harta: 0,
+        total_kewajiban: 0,
+        total_modal: 0,
+        laba_berjalan: 0,
+        total_kewajiban_modal: 0
+      };
+
+      const akunMap = new Map();
+      akunData?.forEach(a => {
+        akunMap.set(a.id, {
+          id: a.id,
+          kode_akun: a.kode,
+          nama_akun: a.nama,
+          kategori: a.kategori,
+          saldo_normal: a.saldo_normal,
+          saldo: 0
+        });
+      });
+
+      mutasiData?.forEach((m: any) => {
+        const akun = akunMap.get(m.akun_id);
+        if (akun) {
+          const debit = Number(m.debit);
+          const kredit = Number(m.kredit);
+          if (akun.saldo_normal === 'Debit') {
+            akun.saldo += debit - kredit;
+          } else {
+            akun.saldo += kredit - debit;
+          }
         }
       });
-      setData(res.data);
+
+      let totalPendapatan = 0;
+      let totalBeban = 0;
+
+      Array.from(akunMap.values()).forEach(akun => {
+        if (akun.kategori === 'Harta') {
+          result.harta.push(akun);
+          result.total_harta += akun.saldo;
+        } else if (akun.kategori === 'Kewajiban') {
+          result.kewajiban.push(akun);
+          result.total_kewajiban += akun.saldo;
+        } else if (akun.kategori === 'Modal') {
+          result.modal.push(akun);
+          result.total_modal += akun.saldo;
+        } else if (akun.kategori === 'Pendapatan') {
+          totalPendapatan += akun.saldo;
+        } else if (akun.kategori === 'Beban') {
+          totalBeban += akun.saldo;
+        }
+      });
+
+      result.laba_berjalan = totalPendapatan - totalBeban;
+      result.total_kewajiban_modal = result.total_kewajiban + result.total_modal + result.laba_berjalan;
+
+      result.harta.sort((a, b) => a.kode_akun.localeCompare(b.kode_akun));
+      result.kewajiban.sort((a, b) => a.kode_akun.localeCompare(b.kode_akun));
+      result.modal.sort((a, b) => a.kode_akun.localeCompare(b.kode_akun));
+      
+      setData(result);
     } catch (error) {
       console.error('Error fetching neraca:', error);
     } finally {

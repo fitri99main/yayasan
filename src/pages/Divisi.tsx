@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Divisi as DivisiType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -7,7 +7,7 @@ import { Plus } from 'lucide-react';
 
 export default function Divisi() {
   const [data, setData] = useState<DivisiType[]>([]);
-  const [yayasanList, setYayasanList] = useState<{ id: number; nama: string }[]>([]);
+  const [yayasanList, setYayasanList] = useState<{ id: string; nama: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<DivisiType | null>(null);
@@ -15,9 +15,12 @@ export default function Divisi() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [divisiRes, yayasanRes] = await Promise.all([api.get('/divisi'), api.get('/yayasan')]);
-    setData(divisiRes.data);
-    setYayasanList(yayasanRes.data);
+    const [divisiRes, yayasanRes] = await Promise.all([
+      supabase.from('divisi').select('*').order('created_at', { ascending: false }),
+      supabase.from('yayasan').select('id, nama').order('nama', { ascending: true })
+    ]);
+    setData(divisiRes.data || []);
+    setYayasanList(yayasanRes.data || []);
     setLoading(false);
   };
 
@@ -25,26 +28,35 @@ export default function Divisi() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ yayasan_id: String(yayasanList[0]?.id || ''), nama: '', kode: '' });
+    setForm({ yayasan_id: yayasanList[0]?.id || '', nama: '', kode: '' });
     setModalOpen(true);
   };
 
   const openEdit = (row: DivisiType) => {
     setEditing(row);
-    setForm({ yayasan_id: String(row.yayasan_id), nama: row.nama, kode: row.kode || '' });
+    setForm({ yayasan_id: row.yayasan_id, nama: row.nama, kode: row.kode || '' });
     setModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, yayasan_id: Number(form.yayasan_id) };
-    if (editing) { await api.put(`/divisi/${editing.id}`, payload); } else { await api.post('/divisi', payload); }
+    if (editing) {
+      const { error } = await supabase.from('divisi').update(form).eq('id', editing.id);
+      if (error) console.error(error);
+    } else {
+      const { error } = await supabase.from('divisi').insert([form]);
+      if (error) console.error(error);
+    }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Hapus divisi ini?')) { await api.delete(`/divisi/${id}`); fetchData(); }
+  const handleDelete = async (id: string) => {
+    if (confirm('Hapus divisi ini?')) {
+      const { error } = await supabase.from('divisi').delete().eq('id', id);
+      if (error) console.error(error);
+      fetchData();
+    }
   };
 
   const columns = [

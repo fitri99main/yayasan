@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, FileText, CheckCircle2 } from 'lucide-react';
-import api from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { Invoice } from '../../types/database';
 
 export default function InvoicePage() {
@@ -23,8 +23,9 @@ export default function InvoicePage() {
 
   const fetchInvoices = async () => {
     try {
-      const res = await api.get('/invoices');
-      setInvoices(res.data);
+      const { data, error } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setInvoices(data || []);
     } catch (error) {
       console.error('Error fetching invoices:', error);
     } finally {
@@ -53,9 +54,18 @@ export default function InvoicePage() {
     e.preventDefault();
     try {
       if (editingInvoice) {
-        await api.put(`/invoices/${editingInvoice.id}`, formData);
+        const { error } = await supabase.from('invoices').update({
+          nomor_invoice: formData.nomor_invoice,
+          jenjang: formData.jenjang,
+          tanggal: formData.tanggal,
+          keterangan: formData.keterangan,
+          total: formData.total,
+          status: formData.status
+        }).eq('id', editingInvoice.id);
+        if (error) throw error;
       } else {
-        await api.post('/invoices', formData);
+        const { error } = await supabase.from('invoices').insert([formData]);
+        if (error) throw error;
       }
       setShowForm(false);
       setEditingInvoice(null);
@@ -69,7 +79,7 @@ export default function InvoicePage() {
       });
       fetchInvoices();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Terjadi kesalahan saat menyimpan data.');
+      alert(error.message || 'Terjadi kesalahan saat menyimpan data.');
       console.error('Error saving invoice:', error);
     }
   };
@@ -91,7 +101,8 @@ export default function InvoicePage() {
   const handleDelete = async (id: number) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus invoice ini?')) {
       try {
-        await api.delete(`/invoices/${id}`);
+        const { error } = await supabase.from('invoices').delete().eq('id', id);
+        if (error) throw error;
         fetchInvoices();
       } catch (error) {
         console.error('Error deleting invoice:', error);

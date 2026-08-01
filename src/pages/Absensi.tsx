@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Absensi as AbsensiType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -9,7 +9,7 @@ import { id } from 'date-fns/locale';
 
 export default function Absensi() {
   const [data, setData] = useState<AbsensiType[]>([]);
-  const [pegawaiList, setPegawaiList] = useState<{ id: number; nama: string; nip: string }[]>([]);
+  const [pegawaiList, setPegawaiList] = useState<{ id: string; nama: string; nip: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AbsensiType | null>(null);
@@ -22,11 +22,11 @@ export default function Absensi() {
   const fetchData = async () => {
     setLoading(true);
     const [absensiRes, pegawaiRes] = await Promise.all([
-      api.get('/absensi', { params: { tanggal: filterTanggal } }),
-      api.get('/pegawai'),
+      supabase.from('absensi').select('*, pegawai(id, nama, nip)').eq('tanggal', filterTanggal).order('waktu_masuk', { ascending: true }),
+      supabase.from('pegawai').select('id, nama, nip').order('nama', { ascending: true }),
     ]);
-    setData(absensiRes.data);
-    setPegawaiList(pegawaiRes.data.map((p: any) => ({ id: p.id, nama: p.nama, nip: p.nip })));
+    setData(absensiRes.data as any || []);
+    setPegawaiList(pegawaiRes.data || []);
     setLoading(false);
   };
 
@@ -34,26 +34,36 @@ export default function Absensi() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ pegawai_id: String(pegawaiList[0]?.id || ''), tanggal: format(new Date(), 'yyyy-MM-dd'), waktu_masuk: '', waktu_keluar: '', status: 'hadir', keterangan: '' });
+    setForm({ pegawai_id: pegawaiList[0]?.id || '', tanggal: format(new Date(), 'yyyy-MM-dd'), waktu_masuk: '', waktu_keluar: '', status: 'hadir', keterangan: '' });
     setModalOpen(true);
   };
 
   const openEdit = (row: AbsensiType) => {
     setEditing(row);
-    setForm({ pegawai_id: String(row.pegawai_id), tanggal: row.tanggal, waktu_masuk: row.waktu_masuk || '', waktu_keluar: row.waktu_keluar || '', status: row.status, keterangan: row.keterangan || '' });
+    setForm({ pegawai_id: row.pegawai_id, tanggal: row.tanggal, waktu_masuk: row.waktu_masuk || '', waktu_keluar: row.waktu_keluar || '', status: row.status, keterangan: row.keterangan || '' });
     setModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, pegawai_id: Number(form.pegawai_id), waktu_masuk: form.waktu_masuk || null, waktu_keluar: form.waktu_keluar || null, keterangan: form.keterangan || null };
-    if (editing) { await api.put(`/absensi/${editing.id}`, payload); } else { await api.post('/absensi', payload); }
+    const payload = { ...form, waktu_masuk: form.waktu_masuk || null, waktu_keluar: form.waktu_keluar || null, keterangan: form.keterangan || null };
+    if (editing) {
+      const { error } = await supabase.from('absensi').update(payload).eq('id', editing.id);
+      if (error) console.error(error);
+    } else {
+      const { error } = await supabase.from('absensi').insert([payload]);
+      if (error) console.error(error);
+    }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Hapus data absensi ini?')) { await api.delete(`/absensi/${id}`); fetchData(); }
+  const handleDelete = async (deleteId: string) => {
+    if (confirm('Hapus data absensi ini?')) {
+      const { error } = await supabase.from('absensi').delete().eq('id', deleteId);
+      if (error) console.error(error);
+      fetchData();
+    }
   };
 
   const columns = [

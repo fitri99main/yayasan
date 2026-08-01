@@ -1,10 +1,12 @@
 import { create } from 'zustand';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
+  role?: string;
+  permissions?: string[];
 }
 
 interface AuthState {
@@ -23,71 +25,94 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
   setUser: (user) => set({ user }),
   setLoading: (loading) => set({ loading }),
+  
   signIn: async (email, password) => {
     try {
-      const { data } = await api.post('/login', { email, password });
-      localStorage.setItem('auth_token', data.token);
-      localStorage.setItem('auth_user', JSON.stringify(data.user));
-      set({ user: data.user });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return { error: error.message };
+      
+      // Fetch user profile from app_users
+      const { data: profile } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+        
+      if (profile) {
+        set({ user: profile as User });
+      } else {
+        set({ user: { id: data.user.id, email: data.user.email!, name: email.split('@')[0], role: 'admin', permissions: [] } });
+      }
       return { error: null };
     } catch (err: any) {
-      const message = err.response?.data?.message || err.response?.data?.errors?.email?.[0] || 'Login gagal';
-      return { error: message };
+      return { error: err.message };
     }
   },
+  
   signUp: async (email, password) => {
     try {
-      const { data } = await api.post('/register', { email, password });
-      localStorage.setItem('auth_token', data.token);
-      localStorage.setItem('auth_user', JSON.stringify(data.user));
-      set({ user: data.user });
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) return { error: error.message };
+      
+      if (data.user) {
+        // Wait a bit for the trigger to insert into app_users
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { data: profile } = await supabase
+          .from('app_users')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+          
+        if (profile) {
+          set({ user: profile as User });
+        }
+      }
       return { error: null };
     } catch (err: any) {
-      const message = err.response?.data?.message || err.response?.data?.errors?.email?.[0] || 'Registrasi gagal';
-      return { error: message };
+      return { error: err.message };
     }
   },
+  
   signOut: async () => {
-    try {
-      await api.post('/logout');
-    } catch {
-      // ignore
-    }
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
+    await supabase.auth.signOut();
     set({ user: null });
   },
+  
   init: () => {
-    const token = localStorage.getItem('auth_token');
-    const storedUser = localStorage.getItem('auth_user');
-    if (token && storedUser) {
-      set({ user: JSON.parse(storedUser), loading: false });
-      // Verify token is still valid
-      api.get('/me').then(({ data }) => {
-        set({ user: data, loading: false });
-        localStorage.setItem('auth_user', JSON.stringify(data));
-      }).catch(async (err) => {
-        const error = err as any;
-        console.error('Failed to verify token:', error);
-        
-        // Debug the token
-        try {
-          const debugRes = await api.get('/debug-token');
-          console.warn('Debug Token Result:', debugRes.data);
-        } catch (debugErr) {
-          console.error('Debug Token Route Failed:', debugErr);
-        }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        supabase
+          .from('app_users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              set({ user: data as User, loading: false });
+            } else {
+              set({ user: { id: session.user.id, email: session.user.email!, name: session.user.email!.split('@')[0], role: 'admin', permissions: [] }, loading: false });
+            }
+          });
+      } else {
+        set({ loading: false });
+      }
+    });
 
-        if (error.response?.status === 401) {
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_user');
-          set({ user: null, loading: false });
-        } else {
-          set({ loading: false });
-        }
-      });
-    } else {
-      set({ loading: false });
-    }
+    supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        supabase
+          .from('app_users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              set({ user: data as User });
+            }
+          });
+      } else {
+        set({ user: null });
+      }
+    });
   },
 }));

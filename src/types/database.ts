@@ -1,5 +1,5 @@
 export interface Yayasan {
-  id: number;
+  id: string;
   nama: string;
   alamat: string | null;
   telepon: string | null;
@@ -9,8 +9,8 @@ export interface Yayasan {
 }
 
 export interface Sekolah {
-  id: number;
-  yayasan_id: number;
+  id: string;
+  yayasan_id: string;
   nama: string;
   alamat: string | null;
   telepon: string | null;
@@ -22,8 +22,8 @@ export interface Sekolah {
 }
 
 export interface Jabatan {
-  id: number;
-  yayasan_id: number;
+  id: string;
+  yayasan_id: string;
   nama: string;
   level: number;
   gaji_pokok: number;
@@ -33,8 +33,8 @@ export interface Jabatan {
 }
 
 export interface Divisi {
-  id: number;
-  yayasan_id: number;
+  id: string;
+  yayasan_id: string;
   nama: string;
   kode: string | null;
   created_at: string | null;
@@ -42,12 +42,12 @@ export interface Divisi {
 }
 
 export interface Pegawai {
-  id: number;
-  user_id: number | null;
-  yayasan_id: number;
-  sekolah_id: number | null;
-  jabatan_id: number;
-  divisi_id: number | null;
+  id: string;
+  user_id: string | null;
+  yayasan_id: string;
+  sekolah_id: string | null;
+  jabatan_id: string;
+  divisi_id: string | null;
   nip: string;
   nama: string;
   email: string;
@@ -63,14 +63,14 @@ export interface Pegawai {
   foto_url: string | null;
   created_at: string | null;
   updated_at: string | null;
-  sekolah?: { id: number; nama: string } | null;
-  jabatan?: { id: number; nama: string } | null;
-  divisi?: { id: number; nama: string } | null;
+  sekolah?: { id: string; nama: string } | null;
+  jabatan?: { id: string; nama: string } | null;
+  divisi?: { id: string; nama: string } | null;
 }
 
 export interface Absensi {
-  id: number;
-  pegawai_id: number;
+  id: string;
+  pegawai_id: string;
   tanggal: string;
   waktu_masuk: string | null;
   waktu_keluar: string | null;
@@ -78,12 +78,12 @@ export interface Absensi {
   keterangan: string | null;
   created_at: string | null;
   updated_at: string | null;
-  pegawai?: { id: number; nama: string; nip: string } | null;
+  pegawai?: { id: string; nama: string; nip: string } | null;
 }
 
 export interface Gaji {
-  id: number;
-  pegawai_id: number;
+  id: string;
+  pegawai_id: string;
   bulan: number;
   tahun: number;
   gaji_pokok: number;
@@ -95,58 +95,61 @@ export interface Gaji {
   tanggal_bayar: string | null;
   created_at: string | null;
   updated_at: string | null;
-  pegawai?: { id: number; nama: string; nip: string } | null;
+  pegawai?: { id: string; nama: string; nip: string } | null;
 }
 
 export interface Cuti {
-  id: number;
-  pegawai_id: number;
+  id: string;
+  pegawai_id: string;
   tanggal_mulai: string;
   tanggal_selesai: string;
   jenis_cuti: string;
   alasan: string;
   status: string;
-  disetujui_oleh: number | null;
+  disetujui_oleh: string | null;
   tanggal_persetujuan: string | null;
   created_at: string | null;
   updated_at: string | null;
-  pegawai?: { id: number; nama: string; nip: string } | null;
+  pegawai?: { id: string; nama: string; nip: string } | null;
 }
 
 export interface Akun {
-  id: number;
-  kode_akun: string;
-  nama_akun: string;
-  kategori: 'Harta' | 'Kewajiban' | 'Modal' | 'Pendapatan' | 'Beban';
-  saldo_normal: 'Debit' | 'Kredit';
-  is_aktif: boolean;
+  id: string;
+  yayasan_id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+  saldo_normal: string;
+  keterangan: string | null;
   created_at: string;
 }
 
-export interface Jurnal {
-  id: number;
-  nomor_bukti: string;
+export interface JurnalUmum {
+  id: string;
+  yayasan_id: string;
   tanggal: string;
+  nomor_bukti: string;
   keterangan: string;
-  total: number;
-  user_id: number | null;
-  details?: JurnalDetail[];
+  total_debit: number;
+  total_kredit: number;
+  status: string;
+  created_by: string | null;
   created_at: string;
+  details?: JurnalDetail[];
 }
 
 export interface JurnalDetail {
-  id: number;
-  jurnal_id: number;
-  akun_id: number;
+  id: string;
+  jurnal_id: string;
+  akun_id: string;
   debit: number;
   kredit: number;
   keterangan: string | null;
   akun?: Akun;
-  created_at: string;
 }
 
 export interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
   role?: string;
@@ -156,7 +159,7 @@ export interface User {
 }
 
 export interface Invoice {
-  id: number;
+  id: string;
   nomor_invoice: string;
   jenjang: 'KB' | 'TK' | 'SD' | 'SMP' | 'SMA';
   tanggal: string;

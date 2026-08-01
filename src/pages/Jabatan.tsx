@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Jabatan as JabatanType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -7,7 +7,7 @@ import { Plus } from 'lucide-react';
 
 export default function Jabatan() {
   const [data, setData] = useState<JabatanType[]>([]);
-  const [yayasanList, setYayasanList] = useState<{ id: number; nama: string }[]>([]);
+  const [yayasanList, setYayasanList] = useState<{ id: string; nama: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<JabatanType | null>(null);
@@ -15,9 +15,12 @@ export default function Jabatan() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [jabatanRes, yayasanRes] = await Promise.all([api.get('/jabatan'), api.get('/yayasan')]);
-    setData(jabatanRes.data);
-    setYayasanList(yayasanRes.data);
+    const [jabatanRes, yayasanRes] = await Promise.all([
+      supabase.from('jabatan').select('*').order('created_at', { ascending: false }),
+      supabase.from('yayasan').select('id, nama').order('nama', { ascending: true })
+    ]);
+    setData(jabatanRes.data || []);
+    setYayasanList(yayasanRes.data || []);
     setLoading(false);
   };
 
@@ -25,26 +28,35 @@ export default function Jabatan() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ yayasan_id: String(yayasanList[0]?.id || ''), nama: '', level: 1, gaji_pokok: 0, tunjangan: 0 });
+    setForm({ yayasan_id: yayasanList[0]?.id || '', nama: '', level: 1, gaji_pokok: 0, tunjangan: 0 });
     setModalOpen(true);
   };
 
   const openEdit = (row: JabatanType) => {
     setEditing(row);
-    setForm({ yayasan_id: String(row.yayasan_id), nama: row.nama, level: row.level, gaji_pokok: row.gaji_pokok, tunjangan: row.tunjangan });
+    setForm({ yayasan_id: row.yayasan_id, nama: row.nama, level: row.level, gaji_pokok: row.gaji_pokok, tunjangan: row.tunjangan });
     setModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, yayasan_id: Number(form.yayasan_id), gaji_pokok: Number(form.gaji_pokok), tunjangan: Number(form.tunjangan) };
-    if (editing) { await api.put(`/jabatan/${editing.id}`, payload); } else { await api.post('/jabatan', payload); }
+    if (editing) {
+      const { error } = await supabase.from('jabatan').update(form).eq('id', editing.id);
+      if (error) console.error(error);
+    } else {
+      const { error } = await supabase.from('jabatan').insert([form]);
+      if (error) console.error(error);
+    }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Hapus jabatan ini?')) { await api.delete(`/jabatan/${id}`); fetchData(); }
+  const handleDelete = async (id: string) => {
+    if (confirm('Hapus jabatan ini?')) {
+      const { error } = await supabase.from('jabatan').delete().eq('id', id);
+      if (error) console.error(error);
+      fetchData();
+    }
   };
 
   const columns = [

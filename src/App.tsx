@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import { useAuthStore } from './store/authStore';
 import DashboardLayout from './components/DashboardLayout';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Gunakan React.lazy untuk Code Splitting (memecah bundle JavaScript)
 const Login = lazy(() => import('./pages/Login'));
@@ -39,23 +40,26 @@ function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
-          <Route path="/yayasan" element={<DashboardLayout><Yayasan /></DashboardLayout>} />
-          <Route path="/sekolah" element={<DashboardLayout><Sekolah /></DashboardLayout>} />
-          <Route path="/jabatan" element={<DashboardLayout><Jabatan /></DashboardLayout>} />
-          <Route path="/divisi" element={<DashboardLayout><Divisi /></DashboardLayout>} />
-          <Route path="/pegawai" element={<DashboardLayout><Pegawai /></DashboardLayout>} />
-          <Route path="/absensi" element={<DashboardLayout><Absensi /></DashboardLayout>} />
-          <Route path="/gaji" element={<DashboardLayout><Gaji /></DashboardLayout>} />
-          <Route path="/cuti" element={<DashboardLayout><Cuti /></DashboardLayout>} />
-          <Route path="/akuntansi/akun" element={<DashboardLayout><DaftarAkun /></DashboardLayout>} />
-          <Route path="/akuntansi/jurnal" element={<DashboardLayout><JurnalUmum /></DashboardLayout>} />
-          <Route path="/akuntansi/buku-besar" element={<DashboardLayout><BukuBesar /></DashboardLayout>} />
-          <Route path="/akuntansi/laba-rugi" element={<DashboardLayout><LabaRugi /></DashboardLayout>} />
-          <Route path="/akuntansi/neraca" element={<DashboardLayout><Neraca /></DashboardLayout>} />
           
-          {/* Pengaturan Routes */}
-          <Route path="/pengguna" element={<DashboardLayout><Pengguna /></DashboardLayout>} />
+          <Route path="/" element={<ProtectedRoute moduleName="Dashboard"><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
+          
+          <Route path="/yayasan" element={<ProtectedRoute moduleName="Yayasan"><DashboardLayout><Yayasan /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/sekolah" element={<ProtectedRoute moduleName="Sekolah"><DashboardLayout><Sekolah /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/jabatan" element={<ProtectedRoute moduleName="Jabatan"><DashboardLayout><Jabatan /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/divisi" element={<ProtectedRoute moduleName="Divisi"><DashboardLayout><Divisi /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/pegawai" element={<ProtectedRoute moduleName="Pegawai"><DashboardLayout><Pegawai /></DashboardLayout></ProtectedRoute>} />
+          
+          <Route path="/absensi" element={<ProtectedRoute moduleName="Absensi"><DashboardLayout><Absensi /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/gaji" element={<ProtectedRoute moduleName="Gaji"><DashboardLayout><Gaji /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/cuti" element={<ProtectedRoute moduleName="Cuti"><DashboardLayout><Cuti /></DashboardLayout></ProtectedRoute>} />
+          
+          <Route path="/akuntansi/akun" element={<ProtectedRoute moduleName="Daftar Akun"><DashboardLayout><DaftarAkun /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/akuntansi/jurnal" element={<ProtectedRoute moduleName="Jurnal Umum"><DashboardLayout><JurnalUmum /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/akuntansi/buku-besar" element={<ProtectedRoute moduleName="Buku Besar"><DashboardLayout><BukuBesar /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/akuntansi/laba-rugi" element={<ProtectedRoute moduleName="Laba Rugi"><DashboardLayout><LabaRugi /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/akuntansi/neraca" element={<ProtectedRoute moduleName="Neraca"><DashboardLayout><Neraca /></DashboardLayout></ProtectedRoute>} />
+          
+          <Route path="/pengguna" element={<ProtectedRoute moduleName="Pengguna"><DashboardLayout><Pengguna /></DashboardLayout></ProtectedRoute>} />
           
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

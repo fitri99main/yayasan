@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2 } from 'lucide-react';
-import api from '../../lib/api';
-import { Akun } from '../../types/database';
+import { supabase } from '../../lib/supabase';
+
+// Local type for UI
+type Akun = {
+  id: string;
+  yayasan_id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+  saldo_normal: string;
+  keterangan: string | null;
+  created_at: string;
+};
 
 export default function DaftarAkun() {
   const [akuns, setAkuns] = useState<Akun[]>([]);
@@ -9,19 +20,27 @@ export default function DaftarAkun() {
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAkun, setEditingAkun] = useState<Akun | null>(null);
+  
+  // Default yayasan_id for now, can be changed later
+  const [yayasanId, setYayasanId] = useState('');
 
   const [formData, setFormData] = useState({
-    kode_akun: '',
-    nama_akun: '',
+    kode: '',
+    nama: '',
     kategori: 'Harta',
     saldo_normal: 'Debit',
-    is_aktif: true,
+    keterangan: '',
   });
 
   const fetchAkun = async () => {
+    setLoading(true);
     try {
-      const { data } = await api.get('/akun');
-      setAkuns(data);
+      const { data: yData } = await supabase.from('yayasan').select('id').limit(1).single();
+      if (yData) setYayasanId(yData.id);
+      
+      const { data, error } = await supabase.from('daftar_akun').select('*').order('kode', { ascending: true });
+      if (error) throw error;
+      setAkuns(data || []);
     } catch (error) {
       console.error('Error fetching akun:', error);
     } finally {
@@ -36,10 +55,13 @@ export default function DaftarAkun() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, yayasan_id: yayasanId };
       if (editingAkun) {
-        await api.put(`/akun/${editingAkun.id}`, formData);
+        const { error } = await supabase.from('daftar_akun').update(payload).eq('id', editingAkun.id);
+        if (error) throw error;
       } else {
-        await api.post('/akun', formData);
+        const { error } = await supabase.from('daftar_akun').insert([payload]);
+        if (error) throw error;
       }
       setIsModalOpen(false);
       fetchAkun();
@@ -49,13 +71,14 @@ export default function DaftarAkun() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus akun ini?')) {
       try {
-        await api.delete(`/akun/${id}`);
+        const { error } = await supabase.from('daftar_akun').delete().eq('id', id);
+        if (error) throw error;
         fetchAkun();
       } catch (error: any) {
-        alert(error.response?.data?.message || 'Gagal menghapus akun.');
+        alert(error.message || 'Gagal menghapus akun.');
       }
     }
   };
@@ -64,20 +87,20 @@ export default function DaftarAkun() {
     if (akun) {
       setEditingAkun(akun);
       setFormData({
-        kode_akun: akun.kode_akun,
-        nama_akun: akun.nama_akun,
+        kode: akun.kode,
+        nama: akun.nama,
         kategori: akun.kategori,
         saldo_normal: akun.saldo_normal,
-        is_aktif: akun.is_aktif,
+        keterangan: akun.keterangan || '',
       });
     } else {
       setEditingAkun(null);
       setFormData({
-        kode_akun: '',
-        nama_akun: '',
+        kode: '',
+        nama: '',
         kategori: 'Harta',
         saldo_normal: 'Debit',
-        is_aktif: true,
+        keterangan: '',
       });
     }
     setIsModalOpen(true);
@@ -85,8 +108,8 @@ export default function DaftarAkun() {
 
   const filteredAkuns = akuns.filter(
     (akun) =>
-      akun.kode_akun.toLowerCase().includes(search.toLowerCase()) ||
-      akun.nama_akun.toLowerCase().includes(search.toLowerCase())
+      akun.kode.toLowerCase().includes(search.toLowerCase()) ||
+      akun.nama.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -126,7 +149,7 @@ export default function DaftarAkun() {
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Nama Akun</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Kategori</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Saldo Normal</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Status</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Keterangan</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Aksi</th>
               </tr>
             </thead>
@@ -147,9 +170,9 @@ export default function DaftarAkun() {
                 filteredAkuns.map((akun) => (
                   <tr key={akun.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                      <span className="font-medium text-slate-900">{akun.kode_akun}</span>
+                      <span className="font-medium text-slate-900">{akun.kode}</span>
                     </td>
-                    <td className="px-6 py-4">{akun.nama_akun}</td>
+                    <td className="px-6 py-4">{akun.nama}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                         ${akun.kategori === 'Harta' ? 'bg-blue-100 text-blue-800' :
@@ -164,11 +187,7 @@ export default function DaftarAkun() {
                       {akun.saldo_normal}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        akun.is_aktif ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'
-                      }`}>
-                        {akun.is_aktif ? 'Aktif' : 'Non-aktif'}
-                      </span>
+                      {akun.keterangan || '-'}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
@@ -206,8 +225,8 @@ export default function DaftarAkun() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Kode Akun</label>
                 <input
                   type="text"
-                  value={formData.kode_akun}
-                  onChange={(e) => setFormData({ ...formData, kode_akun: e.target.value })}
+                  value={formData.kode}
+                  onChange={(e) => setFormData({ ...formData, kode: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                   required
                 />
@@ -216,8 +235,8 @@ export default function DaftarAkun() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Nama Akun</label>
                 <input
                   type="text"
-                  value={formData.nama_akun}
-                  onChange={(e) => setFormData({ ...formData, nama_akun: e.target.value })}
+                  value={formData.nama}
+                  onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                   required
                 />
@@ -246,6 +265,15 @@ export default function DaftarAkun() {
                   <option value="Debit">Debit</option>
                   <option value="Kredit">Kredit</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Keterangan</label>
+                <input
+                  type="text"
+                  value={formData.keterangan}
+                  onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
               </div>
               
               <div className="flex justify-end gap-3 pt-4">

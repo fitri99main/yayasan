@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Pegawai as PegawaiType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -7,10 +7,10 @@ import { Plus } from 'lucide-react';
 
 export default function Pegawai() {
   const [data, setData] = useState<PegawaiType[]>([]);
-  const [sekolahList, setSekolahList] = useState<{ id: number; nama: string }[]>([]);
-  const [jabatanList, setJabatanList] = useState<{ id: number; nama: string }[]>([]);
-  const [divisiList, setDivisiList] = useState<{ id: number; nama: string }[]>([]);
-  const [yayasanList, setYayasanList] = useState<{ id: number; nama: string }[]>([]);
+  const [sekolahList, setSekolahList] = useState<{ id: string; nama: string }[]>([]);
+  const [jabatanList, setJabatanList] = useState<{ id: string; nama: string }[]>([]);
+  const [divisiList, setDivisiList] = useState<{ id: string; nama: string }[]>([]);
+  const [yayasanList, setYayasanList] = useState<{ id: string; nama: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PegawaiType | null>(null);
@@ -24,13 +24,19 @@ export default function Pegawai() {
   const fetchData = async () => {
     setLoading(true);
     const [pegawaiRes, sekolahRes, jabatanRes, divisiRes, yayasanRes] = await Promise.all([
-      api.get('/pegawai'), api.get('/sekolah'), api.get('/jabatan'), api.get('/divisi'), api.get('/yayasan'),
+      supabase.from('pegawai').select('*, sekolah(id, nama), jabatan(id, nama), divisi(id, nama)').order('created_at', { ascending: false }),
+      supabase.from('sekolah').select('id, nama').order('nama'),
+      supabase.from('jabatan').select('id, nama').order('nama'),
+      supabase.from('divisi').select('id, nama').order('nama'),
+      supabase.from('yayasan').select('id, nama').order('nama')
     ]);
-    setData(pegawaiRes.data);
-    setSekolahList(sekolahRes.data);
-    setJabatanList(jabatanRes.data);
-    setDivisiList(divisiRes.data);
-    setYayasanList(yayasanRes.data);
+    // Supabase returns related tables as object arrays if not one-to-one strictly, but usually it's an object for FKs.
+    // The types are already compatible if it returns single objects.
+    setData(pegawaiRes.data as any || []);
+    setSekolahList(sekolahRes.data || []);
+    setJabatanList(jabatanRes.data || []);
+    setDivisiList(divisiRes.data || []);
+    setYayasanList(yayasanRes.data || []);
     setLoading(false);
   };
 
@@ -39,8 +45,8 @@ export default function Pegawai() {
   const openCreate = () => {
     setEditing(null);
     setForm({
-      yayasan_id: String(yayasanList[0]?.id || ''), sekolah_id: '',
-      jabatan_id: String(jabatanList[0]?.id || ''), divisi_id: '',
+      yayasan_id: yayasanList[0]?.id || '', sekolah_id: '',
+      jabatan_id: jabatanList[0]?.id || '', divisi_id: '',
       nip: '', nama: '', email: '', telepon: '', alamat: '', tempat_lahir: '',
       tanggal_lahir: '', jenis_kelamin: 'L', status_pernikahan: 'Belum Menikah',
       pendidikan_terakhir: '', tahun_masuk: new Date().getFullYear(), status: 'aktif',
@@ -51,8 +57,8 @@ export default function Pegawai() {
   const openEdit = (row: PegawaiType) => {
     setEditing(row);
     setForm({
-      yayasan_id: String(row.yayasan_id), sekolah_id: row.sekolah_id ? String(row.sekolah_id) : '',
-      jabatan_id: String(row.jabatan_id), divisi_id: row.divisi_id ? String(row.divisi_id) : '',
+      yayasan_id: row.yayasan_id, sekolah_id: row.sekolah_id || '',
+      jabatan_id: row.jabatan_id, divisi_id: row.divisi_id || '',
       nip: row.nip, nama: row.nama, email: row.email, telepon: row.telepon || '',
       alamat: row.alamat || '', tempat_lahir: row.tempat_lahir || '',
       tanggal_lahir: row.tanggal_lahir || '', jenis_kelamin: row.jenis_kelamin || 'L',
@@ -67,19 +73,27 @@ export default function Pegawai() {
     e.preventDefault();
     const payload = {
       ...form,
-      yayasan_id: Number(form.yayasan_id),
-      sekolah_id: form.sekolah_id ? Number(form.sekolah_id) : null,
-      jabatan_id: Number(form.jabatan_id),
-      divisi_id: form.divisi_id ? Number(form.divisi_id) : null,
+      sekolah_id: form.sekolah_id || null,
+      divisi_id: form.divisi_id || null,
       tanggal_lahir: form.tanggal_lahir || null,
     };
-    if (editing) { await api.put(`/pegawai/${editing.id}`, payload); } else { await api.post('/pegawai', payload); }
+    if (editing) {
+      const { error } = await supabase.from('pegawai').update(payload).eq('id', editing.id);
+      if (error) console.error(error);
+    } else {
+      const { error } = await supabase.from('pegawai').insert([payload]);
+      if (error) console.error(error);
+    }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Hapus pegawai ini?')) { await api.delete(`/pegawai/${id}`); fetchData(); }
+  const handleDelete = async (id: string) => {
+    if (confirm('Hapus pegawai ini?')) {
+      const { error } = await supabase.from('pegawai').delete().eq('id', id);
+      if (error) console.error(error);
+      fetchData();
+    }
   };
 
   const columns = [

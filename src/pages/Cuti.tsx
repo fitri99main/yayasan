@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Cuti as CutiType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -9,7 +9,7 @@ import { id } from 'date-fns/locale';
 
 export default function Cuti() {
   const [data, setData] = useState<CutiType[]>([]);
-  const [pegawaiList, setPegawaiList] = useState<{ id: number; nama: string; nip: string }[]>([]);
+  const [pegawaiList, setPegawaiList] = useState<{ id: string; nama: string; nip: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CutiType | null>(null);
@@ -21,11 +21,11 @@ export default function Cuti() {
   const fetchData = async () => {
     setLoading(true);
     const [cutiRes, pegawaiRes] = await Promise.all([
-      api.get('/cuti'),
-      api.get('/pegawai'),
+      supabase.from('cuti').select('*, pegawai(id, nama, nip)').order('created_at', { ascending: false }),
+      supabase.from('pegawai').select('id, nama, nip').order('nama', { ascending: true }),
     ]);
-    setData(cutiRes.data);
-    setPegawaiList(pegawaiRes.data.map((p: any) => ({ id: p.id, nama: p.nama, nip: p.nip })));
+    setData(cutiRes.data as any || []);
+    setPegawaiList(pegawaiRes.data || []);
     setLoading(false);
   };
 
@@ -33,26 +33,36 @@ export default function Cuti() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ pegawai_id: String(pegawaiList[0]?.id || ''), tanggal_mulai: '', tanggal_selesai: '', jenis_cuti: 'tahunan', alasan: '', status: 'pending' });
+    setForm({ pegawai_id: pegawaiList[0]?.id || '', tanggal_mulai: '', tanggal_selesai: '', jenis_cuti: 'tahunan', alasan: '', status: 'pending' });
     setModalOpen(true);
   };
 
   const openEdit = (row: CutiType) => {
     setEditing(row);
-    setForm({ pegawai_id: String(row.pegawai_id), tanggal_mulai: row.tanggal_mulai, tanggal_selesai: row.tanggal_selesai, jenis_cuti: row.jenis_cuti, alasan: row.alasan, status: row.status });
+    setForm({ pegawai_id: row.pegawai_id, tanggal_mulai: row.tanggal_mulai, tanggal_selesai: row.tanggal_selesai, jenis_cuti: row.jenis_cuti, alasan: row.alasan, status: row.status });
     setModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, pegawai_id: Number(form.pegawai_id) };
-    if (editing) { await api.put(`/cuti/${editing.id}`, payload); } else { await api.post('/cuti', payload); }
+    const payload = { ...form };
+    if (editing) {
+      const { error } = await supabase.from('cuti').update(payload).eq('id', editing.id);
+      if (error) console.error(error);
+    } else {
+      const { error } = await supabase.from('cuti').insert([payload]);
+      if (error) console.error(error);
+    }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Hapus pengajuan cuti ini?')) { await api.delete(`/cuti/${id}`); fetchData(); }
+  const handleDelete = async (deleteId: string) => {
+    if (confirm('Hapus pengajuan cuti ini?')) {
+      const { error } = await supabase.from('cuti').delete().eq('id', deleteId);
+      if (error) console.error(error);
+      fetchData();
+    }
   };
 
   const columns = [

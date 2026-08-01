@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Yayasan as YayasanType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -19,8 +19,13 @@ export default function Yayasan() {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data: rows } = await api.get('/yayasan');
-    setData(rows);
+    const { data: rows, error } = await supabase
+      .from('yayasan')
+      .select('*')
+      .order('created_at', { ascending: false });
+      
+    if (error) console.error('Error fetching yayasan:', error);
+    setData(rows || []);
     setLoading(false);
   };
 
@@ -48,17 +53,28 @@ export default function Yayasan() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editing) {
-      await api.put(`/yayasan/${editing.id}`, form);
+      const { error } = await supabase
+        .from('yayasan')
+        .update(form)
+        .eq('id', editing.id);
+      if (error) console.error('Error updating yayasan:', error);
     } else {
-      await api.post('/yayasan', form);
+      const { error } = await supabase
+        .from('yayasan')
+        .insert([form]);
+      if (error) console.error('Error inserting yayasan:', error);
     }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Hapus yayasan ini? Data sekolah, jabatan, divisi, dan pegawai terkait akan terhapus.')) {
-      await api.delete(`/yayasan/${id}`);
+      const { error } = await supabase
+        .from('yayasan')
+        .delete()
+        .eq('id', id);
+      if (error) console.error('Error deleting yayasan:', error);
       fetchData();
     }
   };

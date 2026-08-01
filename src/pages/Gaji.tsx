@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Gaji as GajiType } from '../types/database';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
@@ -7,7 +7,7 @@ import { Plus, Wallet } from 'lucide-react';
 
 export default function Gaji() {
   const [data, setData] = useState<GajiType[]>([]);
-  const [pegawaiList, setPegawaiList] = useState<{ id: number; nama: string; nip: string }[]>([]);
+  const [pegawaiList, setPegawaiList] = useState<{ id: string; nama: string; nip: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<GajiType | null>(null);
@@ -22,11 +22,11 @@ export default function Gaji() {
   const fetchData = async () => {
     setLoading(true);
     const [gajiRes, pegawaiRes] = await Promise.all([
-      api.get('/gaji', { params: { bulan: filterBulan, tahun: filterTahun } }),
-      api.get('/pegawai'),
+      supabase.from('gaji').select('*, pegawai(id, nama, nip)').eq('bulan', filterBulan).eq('tahun', filterTahun).order('created_at', { ascending: false }),
+      supabase.from('pegawai').select('id, nama, nip').order('nama', { ascending: true }),
     ]);
-    setData(gajiRes.data);
-    setPegawaiList(pegawaiRes.data.map((p: any) => ({ id: p.id, nama: p.nama, nip: p.nip })));
+    setData(gajiRes.data as any || []);
+    setPegawaiList(pegawaiRes.data || []);
     setLoading(false);
   };
 
@@ -34,13 +34,13 @@ export default function Gaji() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ pegawai_id: String(pegawaiList[0]?.id || ''), bulan: filterBulan, tahun: filterTahun, gaji_pokok: 0, tunjangan: 0, bonus: 0, potongan: 0, total_gaji: 0, status: 'belum_dibayar', tanggal_bayar: '' });
+    setForm({ pegawai_id: pegawaiList[0]?.id || '', bulan: filterBulan, tahun: filterTahun, gaji_pokok: 0, tunjangan: 0, bonus: 0, potongan: 0, total_gaji: 0, status: 'belum_dibayar', tanggal_bayar: '' });
     setModalOpen(true);
   };
 
   const openEdit = (row: GajiType) => {
     setEditing(row);
-    setForm({ pegawai_id: String(row.pegawai_id), bulan: row.bulan, tahun: row.tahun, gaji_pokok: row.gaji_pokok, tunjangan: row.tunjangan, bonus: row.bonus, potongan: row.potongan, total_gaji: row.total_gaji, status: row.status, tanggal_bayar: row.tanggal_bayar || '' });
+    setForm({ pegawai_id: row.pegawai_id, bulan: row.bulan, tahun: row.tahun, gaji_pokok: row.gaji_pokok, tunjangan: row.tunjangan, bonus: row.bonus, potongan: row.potongan, total_gaji: row.total_gaji, status: row.status, tanggal_bayar: row.tanggal_bayar || '' });
     setModalOpen(true);
   };
 
@@ -49,14 +49,24 @@ export default function Gaji() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = calculateTotal();
-    const payload = { ...form, pegawai_id: Number(form.pegawai_id), total_gaji: total, tanggal_bayar: form.tanggal_bayar || null };
-    if (editing) { await api.put(`/gaji/${editing.id}`, payload); } else { await api.post('/gaji', payload); }
+    const payload = { ...form, total_gaji: total, tanggal_bayar: form.tanggal_bayar || null };
+    if (editing) {
+      const { error } = await supabase.from('gaji').update(payload).eq('id', editing.id);
+      if (error) console.error(error);
+    } else {
+      const { error } = await supabase.from('gaji').insert([payload]);
+      if (error) console.error(error);
+    }
     setModalOpen(false);
     fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Hapus data gaji ini?')) { await api.delete(`/gaji/${id}`); fetchData(); }
+  const handleDelete = async (deleteId: string) => {
+    if (confirm('Hapus data gaji ini?')) {
+      const { error } = await supabase.from('gaji').delete().eq('id', deleteId);
+      if (error) console.error(error);
+      fetchData();
+    }
   };
 
   const columns = [

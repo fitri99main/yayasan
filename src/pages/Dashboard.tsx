@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import {
   Users,
   School,
@@ -42,12 +42,46 @@ export default function Dashboard() {
     const fetchStats = async () => {
       setLoading(true);
       try {
-        const [statsRes, recentRes] = await Promise.all([
-          api.get('/dashboard/stats'),
-          api.get('/pegawai-recent'),
+        const today = new Date().toISOString().split('T')[0];
+        const monthYear = format(new Date(), 'yyyy-MM');
+
+        // Parallel requests
+        const [
+          { count: totalPegawai },
+          { count: aktif },
+          { count: totalSekolah },
+          { count: totalJabatan },
+          { count: totalDivisi },
+          { count: hadirHariIni },
+          { data: gajiData },
+          { count: cutiPending },
+          { data: recentPegawai }
+        ] = await Promise.all([
+          supabase.from('pegawai').select('id', { count: 'exact', head: true }),
+          supabase.from('pegawai').select('id', { count: 'exact', head: true }).eq('status_aktif', true),
+          supabase.from('sekolah').select('id', { count: 'exact', head: true }),
+          supabase.from('jabatan').select('id', { count: 'exact', head: true }),
+          supabase.from('divisi').select('id', { count: 'exact', head: true }),
+          supabase.from('absensi').select('id', { count: 'exact', head: true }).eq('tanggal', today).eq('status', 'Hadir'),
+          supabase.from('gaji').select('total_gaji_bersih').eq('periode', monthYear),
+          supabase.from('cuti').select('id', { count: 'exact', head: true }).eq('status', 'Menunggu'),
+          supabase.from('pegawai').select('id, nama, nip, created_at, jabatan(nama), sekolah(nama)').order('created_at', { ascending: false }).limit(5)
         ]);
-        setStats(statsRes.data);
-        setRecent(recentRes.data);
+
+        const gajiBulanan = gajiData?.reduce((sum, item) => sum + (Number(item.total_gaji_bersih) || 0), 0) || 0;
+
+        setStats({
+          totalPegawai: totalPegawai || 0,
+          aktif: aktif || 0,
+          totalSekolah: totalSekolah || 0,
+          totalJabatan: totalJabatan || 0,
+          totalDivisi: totalDivisi || 0,
+          hadirHariIni: hadirHariIni || 0,
+          gajiBulanan,
+          cutiPending: cutiPending || 0,
+        });
+
+        setRecent(recentPegawai || []);
       } catch (err) {
         console.error('Failed to fetch dashboard data', err);
       }

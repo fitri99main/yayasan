@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Search, Calendar } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
-import { Akun } from '../../types/database';
+import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
 
 export default function LabaRugi() {
   const { user } = useAuthStore();
-  const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'super admin';
+  const isAdmin = true;
   const navigate = useNavigate();
 
   const [data, setData] = useState<any>(null);
@@ -21,8 +20,8 @@ export default function LabaRugi() {
     const fetchInit = async () => {
       if (isAdmin) {
         try {
-          const res = await api.get('/sekolah');
-          setSekolahs(res.data);
+          const { data, error } = await supabase.from('sekolah').select('*');
+          if (!error && data) setSekolahs(data);
         } catch (error) {
           console.error('Error fetching sekolah:', error);
         }
@@ -38,14 +37,87 @@ export default function LabaRugi() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/laporan/laba-rugi', {
-        params: { 
-          start_date: startDate || undefined, 
-          end_date: endDate,
-          ...(selectedPrefix ? { prefix: selectedPrefix } : {})
+      // 1. Get all accounts for Pendapatan and Beban
+      const { data: akunData, error: akunError } = await supabase
+        .from('daftar_akun')
+        .select('id, kode, nama, kategori, saldo_normal')
+        .in('kategori', ['Pendapatan', 'Beban']);
+        
+      if (akunError) throw akunError;
+
+      // 2. Get mutations based on date and prefix
+      let query = supabase
+        .from('jurnal_detail')
+        .select(`
+          akun_id,
+          debit,
+          kredit,
+          jurnal:jurnal_umum!inner(tanggal, nomor_bukti)
+        `);
+
+      if (startDate) {
+        query = query.gte('jurnal.tanggal', startDate);
+      }
+      if (endDate) {
+        query = query.lte('jurnal.tanggal', endDate);
+      }
+      if (selectedPrefix) {
+        query = query.like('jurnal.nomor_bukti', `${selectedPrefix}%`);
+      }
+
+      const { data: mutasiData, error: mutasiError } = await query;
+      if (mutasiError) throw mutasiError;
+
+      // 3. Process data
+      const result = {
+        pendapatan: [] as any[],
+        beban: [] as any[],
+        total_pendapatan: 0,
+        total_beban: 0,
+        laba_rugi: 0
+      };
+
+      const akunMap = new Map();
+      akunData?.forEach(a => {
+        akunMap.set(a.id, {
+          id: a.id,
+          kode_akun: a.kode,
+          nama_akun: a.nama,
+          kategori: a.kategori,
+          saldo_normal: a.saldo_normal,
+          saldo: 0
+        });
+      });
+
+      mutasiData?.forEach((m: any) => {
+        const akun = akunMap.get(m.akun_id);
+        if (akun) {
+          const debit = Number(m.debit);
+          const kredit = Number(m.kredit);
+          if (akun.saldo_normal === 'Debit') {
+            akun.saldo += debit - kredit;
+          } else {
+            akun.saldo += kredit - debit;
+          }
         }
       });
-      setData(res.data);
+
+      Array.from(akunMap.values()).forEach(akun => {
+        if (akun.kategori === 'Pendapatan') {
+          result.pendapatan.push(akun);
+          result.total_pendapatan += akun.saldo;
+        } else if (akun.kategori === 'Beban') {
+          result.beban.push(akun);
+          result.total_beban += akun.saldo;
+        }
+      });
+
+      result.pendapatan.sort((a, b) => a.kode_akun.localeCompare(b.kode_akun));
+      result.beban.sort((a, b) => a.kode_akun.localeCompare(b.kode_akun));
+      
+      result.laba_rugi = result.total_pendapatan - result.total_beban;
+      
+      setData(result);
     } catch (error) {
       console.error('Error fetching laba rugi:', error);
     } finally {
